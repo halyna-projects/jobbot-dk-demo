@@ -45,7 +45,11 @@ _SYSTEM_INSTRUCTION = (
     "højst {max_attempts} gange i alt. "
     "Skriv altid én kort sætning på dansk om hvorfor du prøver netop dette ord, før du kalder værktøjet. "
     "Hvis et forsøg giver resultater (antal > 0), skal du IKKE kalde værktøjet igen -- du er færdig. "
-    "Hvis du ikke kan komme på et fornuftigt alternativ, så skriv det og stop uden at kalde værktøjet."
+    "VIGTIGT: kald kun værktøjet hvis '{keyword}' faktisk kan tolkes som et rigtigt ord eller en "
+    "stavefejl af et rigtigt ord (dansk eller udenlandsk jobtitel/fagområde). "
+    "Hvis '{keyword}' er meningsløs tekst uden nogen rimelig fortolkning (tilfældige bogstaver, "
+    "ikke et ord i noget sprog) -- så skriv det ærligt på dansk og STOP uden at kalde værktøjet. "
+    "Gæt aldrig et tilfældigt ord bare for at have noget at foreslå."
 )
 
 
