@@ -16,6 +16,7 @@ from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
 from bot import cv_parser, storage
+from bot.agentic_search import agentic_keyword_search
 from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
@@ -25,6 +26,7 @@ from bot.pdf_export import letter_to_pdf, vacancy_to_pdf
 from bot.search import search_all
 from bot.semantic_matching import is_configured as semantic_matching_configured
 from bot.semantic_matching import semantic_match_batch
+from bot.sources import dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -489,6 +491,27 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     vacancies = await asyncio.to_thread(search_all, keywords, location)
+
+    # Pilot: if the plain search came back completely empty, let Gemini
+    # itself decide on a broader/synonym Danish term per keyword and try
+    # that -- instead of us hard-coding a synonym list. Capped at 2 extra
+    # tries per keyword inside agentic_keyword_search, so this can't loop.
+    if not vacancies and semantic_matching_configured():
+        agent_notes: list[str] = []
+        extra_vacancies = []
+        for kw in keywords:
+            extra, log = await asyncio.to_thread(agentic_keyword_search, kw)
+            extra_vacancies.extend(extra)
+            agent_notes.extend(log)
+
+        if extra_vacancies:
+            vacancies = dedupe(extra_vacancies)
+            if location:
+                needle = location.strip().lower()
+                vacancies = [v for v in vacancies if needle in v.location.lower()]
+
+        if agent_notes:
+            await send_with_retry(update, "🤖 " + " ".join(agent_notes))
 
     urls = [v.url for v in vacancies if v.url]
     unseen_urls = storage.filter_unseen(telegram_id, urls)
