@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
     cv_text TEXT DEFAULT NULL,
     location TEXT DEFAULT '',
     last_results TEXT DEFAULT NULL,
-    letters_explained_count INTEGER DEFAULT 0
+    letters_explained_count INTEGER DEFAULT 0,
+    ai_actions_count INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS seen_vacancies (
@@ -50,6 +51,10 @@ def init_db():
         if "letters_explained_count" not in columns:
             conn.execute(
                 "ALTER TABLE users ADD COLUMN letters_explained_count INTEGER DEFAULT 0"
+            )
+        if "ai_actions_count" not in columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN ai_actions_count INTEGER DEFAULT 0"
             )
 
 
@@ -168,6 +173,21 @@ def increment_letters_explained(telegram_id: int):
     with get_conn() as conn:
         conn.execute(
             "UPDATE users SET letters_explained_count = letters_explained_count + 1 "
+            "WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+
+
+def get_ai_actions_count(telegram_id: int) -> int:
+    user = get_user(telegram_id)
+    return (user or {}).get("ai_actions_count") or 0
+
+
+def increment_ai_actions(telegram_id: int):
+    ensure_user(telegram_id)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET ai_actions_count = ai_actions_count + 1 "
             "WHERE telegram_id = ?",
             (telegram_id,),
         )

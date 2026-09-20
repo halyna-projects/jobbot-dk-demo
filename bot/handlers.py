@@ -18,7 +18,7 @@ from telegram.ext import ContextTypes
 from bot import cv_parser, storage
 from bot.agentic_search import agentic_keyword_search
 from bot.danish_cities import resolve_city
-from bot.config import ADMIN_TELEGRAM_ID, UPLOADS_DIR
+from bot.config import ADMIN_TELEGRAM_ID, FREE_TRIAL_AI_ACTIONS, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
@@ -468,6 +468,25 @@ def _score_vacancies(telegram_id: int, vacancies: list, keywords: list[str]):
 # "Vis liste igen").
 NUMBER_HINT_HTML = "<b>For at få en ansøgning til et job — send dets nummer</b> (f.eks.: 1)."
 
+# This bot is shared publicly (LinkedIn etc.) and every search/application
+# costs real Gemini tokens, so non-owner users get a small free quota
+# instead of unlimited access. ADMIN_TELEGRAM_ID (the owner) is exempt.
+DEMO_QUOTA_MESSAGE = (
+    f"Denne bot er en gratis demo med en grænse på {FREE_TRIAL_AI_ACTIONS} "
+    "søgninger/ansøgninger pr. person. Du har brugt din del af demoen — "
+    "skriv til Halyna, hvis du vil se mere."
+)
+
+
+async def _check_ai_quota(update: Update, telegram_id: int) -> bool:
+    if telegram_id == ADMIN_TELEGRAM_ID:
+        return True
+    if storage.get_ai_actions_count(telegram_id) >= FREE_TRIAL_AI_ACTIONS:
+        await update.effective_message.reply_text(DEMO_QUOTA_MESSAGE)
+        return False
+    storage.increment_ai_actions(telegram_id)
+    return True
+
 
 async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
@@ -477,6 +496,9 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Udfyld først: " + ", ".join(missing),
             reply_markup=build_keyboard(telegram_id),
         )
+        return
+
+    if not await _check_ai_quota(update, telegram_id):
         return
 
     keywords = storage.get_keywords(telegram_id)
@@ -609,6 +631,9 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
 
     if not semantic_matching_configured():
         await message.reply_text("Generering af ansøgninger er ikke tilgængelig lige nu (modeladgang ikke konfigureret).")
+        return
+
+    if not await _check_ai_quota(update, telegram_id):
         return
 
     vacancy, percent, detail = results[index - 1]
