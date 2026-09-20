@@ -76,7 +76,14 @@ def _is_ready_for_search(telegram_id: int) -> bool:
 
 
 def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
-    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV], [BTN_RESET_SEEN], [BTN_ADD_VACANCY]]
+    # Kept to as few rows as possible -- five buttons stacked one per row
+    # used to push the last one ("Tilføj job manuelt") off-screen on
+    # smaller phones, easy to miss without scrolling the keyboard itself.
+    rows = [
+        [BTN_KEYWORDS, BTN_LOCATION],
+        [BTN_CV, BTN_RESET_SEEN],
+        [BTN_ADD_VACANCY],
+    ]
     if _is_ready_for_search(telegram_id):
         rows.insert(0, [BTN_SEARCH])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
