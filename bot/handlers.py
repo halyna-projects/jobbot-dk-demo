@@ -61,7 +61,7 @@ BTN_LOCATION = "📍 By"
 BTN_CV = "📄 Mit CV"
 BTN_CANCEL = "❌ Annuller"
 BTN_ALL_DENMARK = "🌍 Hele Danmark"
-BTN_RESET_SEEN = "🔄 Vis job igen"
+BTN_RESET_SEEN = "🔄 Søg job igen"
 BTN_ADD_VACANCY = "➕ Tilføj job manuelt"
 
 # Required before the Search button appears at all.
