@@ -521,7 +521,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_with_retry(
             update,
             "Ingen nye job fundet (eller de er allerede vist tidligere). "
-            f"Tryk «{BTN_RESET_SEEN}» for at se dem igen.",
+            f"Tryk «{BTN_RESET_SEEN}» for at se dem igen, eller skriv et nyt søgeord "
+            "for at søge igen.",
             reply_markup=build_keyboard(telegram_id),
         )
         return
@@ -552,6 +553,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else "Det var alle nye job lige nu."
     )
     footer += "\n\n" + NUMBER_HINT_HTML
+    footer += "\n\nSkriv et nyt søgeord for at søge igen, eller brug menuen nedenfor."
     await send_with_retry(
         update, footer, reply_markup=build_keyboard(telegram_id), parse_mode="HTML"
     )
