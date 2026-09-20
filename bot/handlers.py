@@ -23,7 +23,7 @@ from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
 from bot.pdf_export import letter_to_pdf, vacancy_to_pdf
-from bot.search import search_all
+from bot.search import search_keyword
 from bot.semantic_matching import is_configured as semantic_matching_configured
 from bot.semantic_matching import semantic_match_batch
 from bot.sources import dedupe
@@ -512,31 +512,43 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + " ...",
     )
 
-    vacancies = await asyncio.to_thread(search_all, keywords, location)
+    # Check each keyword on its own, not just the combined list -- with
+    # several keywords, one of them returning 0 results used to be masked
+    # by the others finding plenty, so a typo silently vanished from the
+    # search with no correction attempt and no explanation.
+    vacancies: list = []
+    empty_keywords: list[str] = []
+    for kw in keywords:
+        kw_results = await asyncio.to_thread(search_keyword, kw)
+        if kw_results:
+            vacancies.extend(kw_results)
+        else:
+            empty_keywords.append(kw)
 
-    # Pilot: if the plain search came back completely empty, let Gemini
-    # itself decide on a broader/synonym Danish term per keyword and try
-    # that -- instead of us hard-coding a synonym list. Capped at 2 extra
-    # tries per keyword inside agentic_keyword_search, so this can't loop.
+    # Pilot: for any keyword that found 0 results on its own, let Gemini
+    # itself decide on a broader/synonym Danish term and try that --
+    # instead of us hard-coding a synonym list. Capped at 2 extra tries
+    # per keyword inside agentic_keyword_search, so this can't loop.
     display_keywords = list(keywords)
-    if not vacancies and semantic_matching_configured():
+    if empty_keywords and semantic_matching_configured():
         agent_notes: list[str] = []
         extra_vacancies = []
-        for kw in keywords:
+        for kw in empty_keywords:
             extra, log, used_term = await asyncio.to_thread(agentic_keyword_search, kw)
             extra_vacancies.extend(extra)
             agent_notes.extend(log)
             if used_term:
                 display_keywords.append(used_term)
 
-        if extra_vacancies:
-            vacancies = dedupe(extra_vacancies)
-            if location:
-                needle = location.strip().lower()
-                vacancies = [v for v in vacancies if needle in v.location.lower()]
+        vacancies.extend(extra_vacancies)
 
         if agent_notes:
             await send_with_retry(update, "🤖 " + " ".join(agent_notes))
+
+    vacancies = dedupe(vacancies)
+    if location:
+        needle = location.strip().lower()
+        vacancies = [v for v in vacancies if needle in v.location.lower()]
 
     urls = [v.url for v in vacancies if v.url]
     unseen_urls = storage.filter_unseen(telegram_id, urls)
