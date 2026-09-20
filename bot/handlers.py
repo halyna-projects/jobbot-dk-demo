@@ -580,8 +580,9 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.mark_seen(telegram_id, sent_urls)
 
     footer = (
-        f"...og {len(new_vacancies) - MAX_RESULTS} mere. "
-        f"Præciser søgeord eller by for at indsnævre listen."
+        f"Viser de {MAX_RESULTS} bedste matches ud af {len(new_vacancies)} fundet. "
+        f"De resterende {len(new_vacancies) - MAX_RESULTS} havde lavere match — skriv "
+        f"mere specifikke søgeord for et nyt resultatsæt."
         if len(new_vacancies) > MAX_RESULTS
         else "Det var alle nye job lige nu."
     )
