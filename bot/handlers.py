@@ -518,13 +518,16 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # itself decide on a broader/synonym Danish term per keyword and try
     # that -- instead of us hard-coding a synonym list. Capped at 2 extra
     # tries per keyword inside agentic_keyword_search, so this can't loop.
+    display_keywords = list(keywords)
     if not vacancies and semantic_matching_configured():
         agent_notes: list[str] = []
         extra_vacancies = []
         for kw in keywords:
-            extra, log = await asyncio.to_thread(agentic_keyword_search, kw)
+            extra, log, used_term = await asyncio.to_thread(agentic_keyword_search, kw)
             extra_vacancies.extend(extra)
             agent_notes.extend(log)
+            if used_term:
+                display_keywords.append(used_term)
 
         if extra_vacancies:
             vacancies = dedupe(extra_vacancies)
@@ -562,6 +565,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     MAX_RESULTS = 20
     to_send = scored[:MAX_RESULTS]
     storage.set_last_results(telegram_id, to_send)
+    storage.set_last_search_keywords(telegram_id, display_keywords)
 
     # Said again at the end of the full list too, but that's easy to miss
     # if the person doesn't scroll past a long list -- show it right above
@@ -572,7 +576,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
 
-    sent_urls = await _send_results_chunks(update, to_send, keywords)
+    sent_urls = await _send_results_chunks(update, to_send, display_keywords)
     storage.mark_seen(telegram_id, sent_urls)
 
     footer = (
@@ -716,7 +720,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Liste med {len(results)}. {NUMBER_HINT_HTML}",
             parse_mode="HTML",
         )
-        await _send_results_chunks(update, results, storage.get_keywords(telegram_id))
+        await _send_results_chunks(update, results, storage.get_last_search_keywords(telegram_id))
         await update.effective_message.reply_text(
             "Det var hele listen ovenfor.",
             reply_markup=build_keyboard(telegram_id),

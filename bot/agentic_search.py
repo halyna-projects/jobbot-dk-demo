@@ -53,12 +53,14 @@ _SYSTEM_INSTRUCTION = (
 )
 
 
-def agentic_keyword_search(keyword: str) -> tuple[list[Vacancy], list[str]]:
-    """Returns (extra_vacancies, log). log is a short list of Danish
-    sentences describing what the model tried and why -- useful both for
-    debugging and as a transparent trail to show the person."""
+def agentic_keyword_search(keyword: str) -> tuple[list[Vacancy], list[str], str | None]:
+    """Returns (extra_vacancies, log, used_term). log is a short list of
+    Danish sentences describing what the model tried and why -- useful both
+    for debugging and as a transparent trail to show the person. used_term
+    is the term that actually found results (or None), so the caller can
+    show it as the effective search keyword instead of the original."""
     if not is_configured():
-        return [], []
+        return [], [], None
 
     client = get_client()
     config = types.GenerateContentConfig(
@@ -76,6 +78,7 @@ def agentic_keyword_search(keyword: str) -> tuple[list[Vacancy], list[str]]:
 
     found: list[Vacancy] = []
     log: list[str] = []
+    used_term: str | None = None
     tried_terms = {keyword.strip().lower()}
 
     for _ in range(MAX_EXTRA_ATTEMPTS):
@@ -128,7 +131,8 @@ def agentic_keyword_search(keyword: str) -> tuple[list[Vacancy], list[str]]:
         )
 
         if results:
+            used_term = term
             break  # found something -- the hard cap on top of this makes
             # a runaway loop impossible either way
 
-    return found, log
+    return found, log, used_term
