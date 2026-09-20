@@ -691,6 +691,21 @@ async def _process_manual_vacancy(update: Update, telegram_id: int, vacancy) -> 
 
 async def _process_manual_vacancy_text(update: Update, telegram_id: int, url: str) -> None:
     message = update.effective_message
+
+    # The same job re-scored from scratch can land on a different %/reasoning
+    # than the first time (a fresh AI call, sometimes a trimmed description)
+    # -- confusing if it's already sitting in the list under another number.
+    # Point back to that instead of creating an inconsistent duplicate.
+    existing = storage.get_last_results(telegram_id)
+    for i, (v, _percent, _detail) in enumerate(existing, start=1):
+        if v.url and v.url == url:
+            await message.reply_text(
+                f"Det job er allerede i din liste som nr. {i} — se vurderingen der "
+                "i stedet for at få det bedømt igen.",
+                reply_markup=build_keyboard(telegram_id),
+            )
+            return
+
     await message.reply_text("Henter jobopslaget...")
     try:
         page_text = await asyncio.to_thread(fetch_url_text, url)
