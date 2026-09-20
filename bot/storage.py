@@ -318,3 +318,15 @@ def delete_inactive_users(days: int, exclude_ids: set[int]) -> int:
             "(SELECT telegram_id FROM users)"
         )
     return deleted
+
+
+def get_recently_active_telegram_ids(minutes: int) -> list[int]:
+    """Who to warn before a deploy restarts the bot: people active
+    recently enough that they might genuinely be mid-conversation right
+    now, not everyone who has ever used it."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT telegram_id FROM users WHERE last_active_at > datetime('now', ?)",
+            (f"-{minutes} minutes",),
+        ).fetchall()
+    return [row["telegram_id"] for row in rows]

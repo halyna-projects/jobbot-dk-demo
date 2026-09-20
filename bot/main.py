@@ -45,6 +45,36 @@ async def cleanup_inactive_users(context: ContextTypes.DEFAULT_TYPE):
         logger.info("Privacy cleanup: deleted %s inactive user(s)", deleted)
 
 
+# Recently-active window for the restart notice below -- long enough to
+# catch someone genuinely mid-conversation, short enough not to spam
+# someone who used the bot an hour ago and is long gone.
+RESTART_NOTICE_WINDOW_MINUTES = 5
+RESTART_NOTICE_TEXT = (
+    "🔧 Botten opdateres lige nu (ny version deployes) — det tager typisk "
+    "under et minut. Hvis du var midt i noget, så prøv igen om lidt."
+)
+
+
+async def notify_active_users_before_restart(app: Application):
+    # Runs after polling has stopped but before the bot's own connection is
+    # torn down, so this is the last reliable moment to actually send
+    # anything -- a redeploy otherwise just kills the process with no
+    # warning, which looked exactly like a hang from the outside.
+    try:
+        ids = await asyncio.to_thread(
+            storage.get_recently_active_telegram_ids, RESTART_NOTICE_WINDOW_MINUTES
+        )
+    except Exception:
+        logger.exception("Could not look up recently active users before restart")
+        return
+
+    for telegram_id in ids:
+        try:
+            await app.bot.send_message(telegram_id, RESTART_NOTICE_TEXT)
+        except Exception:
+            logger.warning("Could not notify %s before restart", telegram_id)
+
+
 def main():
     storage.init_db()
 
@@ -55,6 +85,7 @@ def main():
         .read_timeout(20)
         .get_updates_connect_timeout(20)
         .get_updates_read_timeout(20)
+        .post_stop(notify_active_users_before_restart)
         .build()
     )
 
