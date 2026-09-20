@@ -584,20 +584,10 @@ async def _send_results_chunks(
     return sent_urls
 
 
-def _apply_keyboard(telegram_id: int, index: int):
-    results = storage.get_last_results(telegram_id)
-    row = []
-    if index < len(results):
-        row.append(
-            InlineKeyboardButton(
-                f"➡️ Næste (nr. {index + 1})", callback_data=f"apply:{index + 1}"
-            )
-        )
-    buttons = [row] if row else []
-    buttons.append(
-        [InlineKeyboardButton("📋 Vis listen igen", callback_data="relist")]
+def _apply_keyboard():
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("📋 Vis listen igen", callback_data="relist")]]
     )
-    return InlineKeyboardMarkup(buttons)
 
 
 async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_TYPE, index: int):
@@ -622,7 +612,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     vacancy, percent, detail = results[index - 1]
-    await send_with_retry(update, f"Skriver ansøgning til «{vacancy.title}»...")
+    await send_with_retry(update, f"Skriver ansøgning til nr. {index} «{vacancy.title}»...")
 
     try:
         letter = await asyncio.to_thread(generate_cover_letter, cv_text, vacancy)
@@ -665,7 +655,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
 
     await message.reply_text(
         "Hvad nu? Vælg nedenfor, eller skriv et nyt søgeord for at søge igen.",
-        reply_markup=_apply_keyboard(telegram_id, index),
+        reply_markup=_apply_keyboard(),
     )
 
 
