@@ -664,7 +664,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
             return
 
     await message.reply_text(
-        "Hvad nu?",
+        "Hvad nu? Vælg nedenfor, eller skriv et nyt søgeord for at søge igen.",
         reply_markup=_apply_keyboard(telegram_id, index),
     )
 
