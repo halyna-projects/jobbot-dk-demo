@@ -37,4 +37,4 @@ EXCLUDED_TELEGRAM_IDS = {7644385945, ADMIN_TELEGRAM_ID}
 # This is a public demo (shared on LinkedIn etc.) backed by paid Gemini
 # calls, so every search/application counts against a per-person free
 # quota -- except ADMIN_TELEGRAM_ID, which is unlimited.
-FREE_TRIAL_AI_ACTIONS = 3
+FREE_TRIAL_AI_ACTIONS = 2
