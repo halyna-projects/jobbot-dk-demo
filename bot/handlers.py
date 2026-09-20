@@ -85,14 +85,14 @@ def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
         # "Søg job igen" appear above "SØG JOB" itself read as if the
         # secondary action came before the main one.
         rows = [
-            [BTN_KEYWORDS, BTN_LOCATION],
+            [BTN_KEYWORDS, BTN_LOCATION, BTN_CV],
             [BTN_SEARCH, BTN_RESET_SEEN],
-            [BTN_CV, BTN_ADD_VACANCY],
+            [BTN_ADD_VACANCY],
         ]
     else:
         rows = [
-            [BTN_KEYWORDS, BTN_LOCATION],
-            [BTN_CV, BTN_ADD_VACANCY],
+            [BTN_KEYWORDS, BTN_LOCATION, BTN_CV],
+            [BTN_ADD_VACANCY],
         ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
