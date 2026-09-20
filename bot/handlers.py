@@ -702,7 +702,7 @@ async def _process_manual_vacancy_text(update: Update, telegram_id: int, url: st
             await message.reply_text(
                 f"Det job er allerede i din liste som nr. {i} — se vurderingen der "
                 "i stedet for at få det bedømt igen.",
-                reply_markup=build_keyboard(telegram_id),
+                reply_markup=_apply_keyboard(),
             )
             return
 
