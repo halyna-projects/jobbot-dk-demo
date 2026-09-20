@@ -903,6 +903,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await _send_results_chunks(update, results, storage.get_last_search_keywords(telegram_id))
         await update.effective_message.reply_text(
-            "Det var hele listen ovenfor.",
+            f"Det var hele listen ovenfor. {NUMBER_HINT_HTML}",
+            parse_mode="HTML",
             reply_markup=build_keyboard(telegram_id),
         )
