@@ -21,6 +21,11 @@ from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, FREE_TRIAL_AI_ACTIONS, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
+from bot.manual_vacancy import (
+    extract_vacancy_from_image,
+    extract_vacancy_from_text,
+    fetch_url_text,
+)
 from bot.matching import compute_match
 from bot.pdf_export import letter_to_pdf, vacancy_to_pdf
 from bot.search import search_keyword
@@ -57,6 +62,7 @@ BTN_CV = "📄 Mit CV"
 BTN_CANCEL = "❌ Annuller"
 BTN_ALL_DENMARK = "🌍 Hele Danmark"
 BTN_RESET_SEEN = "🔄 Vis job igen"
+BTN_ADD_VACANCY = "➕ Tilføj job manuelt"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
@@ -70,7 +76,7 @@ def _is_ready_for_search(telegram_id: int) -> bool:
 
 
 def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
-    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV], [BTN_RESET_SEEN]]
+    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV], [BTN_RESET_SEEN], [BTN_ADD_VACANCY]]
     if _is_ready_for_search(telegram_id):
         rows.insert(0, [BTN_SEARCH])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -115,7 +121,9 @@ WELCOME = (
     "Brug knapperne nedenfor:\n"
     f"{BTN_KEYWORDS} — angiv dine søgeord adskilt med komma\n"
     f"{BTN_LOCATION} — valgfrit, filtrer efter by\n"
-    f"{BTN_CV} — upload/tjek dit CV (PDF eller Word — send filen direkte)\n\n"
+    f"{BTN_CV} — upload/tjek dit CV (PDF eller Word — send filen direkte)\n"
+    f"{BTN_ADD_VACANCY} — fandt du selv et job et andet sted? Send et link, "
+    "en PDF eller et foto af opslaget, så vurderer botten det på samme måde.\n\n"
     f"Knappen {BTN_SEARCH} vises, når søgeord og CV er udfyldt."
 )
 
@@ -309,12 +317,30 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == BTN_RESET_SEEN:
         await reset_seen(update, context)
         return
+    if text == BTN_ADD_VACANCY:
+        context.user_data["awaiting"] = "manual_vacancy"
+        await update.message.reply_text(
+            "Send et link til jobopslaget, en PDF-fil, eller et foto/skærmbillede af det.",
+            reply_markup=CANCEL_KEYBOARD,
+        )
+        return
 
     awaiting = context.user_data.pop("awaiting", None)
     if awaiting == "location":
         if text.lower() in ("nej", "no", "-"):
             text = ""
         await _resolve_and_save_location(update, context, telegram_id, text)
+        return
+    if awaiting == "manual_vacancy":
+        if text.startswith("http://") or text.startswith("https://"):
+            await _process_manual_vacancy_text(update, telegram_id, text)
+        else:
+            context.user_data["awaiting"] = "manual_vacancy"
+            await update.message.reply_text(
+                "Det ligner ikke et link. Send et link til jobopslaget, en "
+                "PDF-fil, eller et foto/skærmbillede af det.",
+                reply_markup=CANCEL_KEYBOARD,
+            )
         return
 
     # A bare number (no /apply, no other pending state) almost always means
@@ -341,6 +367,11 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     document: Document = update.message.document
+
+    if context.user_data.get("awaiting") == "manual_vacancy":
+        context.user_data.pop("awaiting", None)
+        await handle_manual_vacancy_document(update, telegram_id, document)
+        return
 
     allowed_ext = (".pdf", ".doc", ".docx")
     filename = document.file_name or "cv"
@@ -621,6 +652,128 @@ async def _send_results_chunks(
         await send_with_retry(update, text, disable_web_page_preview=True, parse_mode="HTML")
         sent_urls.extend(v.url for v, percent, detail in chunk if v.url)
     return sent_urls
+
+
+async def _process_manual_vacancy(update: Update, telegram_id: int, vacancy) -> None:
+    """Shared tail end for a manually-added vacancy (from a link, PDF, or
+    photo) -- once we have a Vacancy object, treat it exactly like one more
+    search result: score it, append it to the running list, and let the
+    normal "send its number" flow take it from there."""
+    message = update.effective_message
+
+    if not await _check_ai_quota(update, telegram_id):
+        return
+
+    cv_text = storage.get_cv_text(telegram_id)
+    if not cv_text:
+        await message.reply_text(
+            f"Kan ikke finde teksten fra dit CV — send filen igen via {BTN_CV}.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    scored = await asyncio.to_thread(_score_vacancies, telegram_id, [vacancy], [])
+    v, percent, detail = scored[0]
+
+    existing = storage.get_last_results(telegram_id)
+    combined = existing + [(v, percent, detail)]
+    storage.set_last_results(telegram_id, combined)
+
+    text = format_vacancy(len(combined), v, percent, detail, [])
+    await send_with_retry(
+        update,
+        text + "\n\n" + NUMBER_HINT_HTML,
+        disable_web_page_preview=True,
+        parse_mode="HTML",
+        reply_markup=build_keyboard(telegram_id),
+    )
+
+
+async def _process_manual_vacancy_text(update: Update, telegram_id: int, url: str) -> None:
+    message = update.effective_message
+    await message.reply_text("Henter jobopslaget...")
+    try:
+        page_text = await asyncio.to_thread(fetch_url_text, url)
+    except Exception:
+        logger.exception("Could not fetch manual vacancy URL %r for %s", url, telegram_id)
+        await message.reply_text(
+            "Kunne ikke hente siden (linket virker muligvis ikke, eller siden "
+            "blokerer botten). Prøv i stedet at sende en PDF eller et foto af opslaget.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    vacancy = await asyncio.to_thread(extract_vacancy_from_text, page_text)
+    if vacancy is None:
+        await message.reply_text(
+            "Kunne ikke genkende et jobopslag på den side. Prøv i stedet at sende "
+            "en PDF eller et foto af opslaget.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+    vacancy.url = url
+    await _process_manual_vacancy(update, telegram_id, vacancy)
+
+
+async def handle_manual_vacancy_document(update: Update, telegram_id: int, document: Document) -> None:
+    message = update.effective_message
+    filename = (document.file_name or "").lower()
+    if not filename.endswith((".pdf", ".doc", ".docx")):
+        await message.reply_text(
+            "Send jobopslaget som PDF eller Word, eller send det som link eller foto i stedet.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dest_path = Path(tmp_dir) / (document.file_name or "vacancy.pdf")
+        tg_file = await document.get_file()
+        await tg_file.download_to_drive(custom_path=str(dest_path))
+        try:
+            text = cv_parser.extract_text(str(dest_path))
+        except Exception:
+            logger.exception(
+                "Could not extract text from manual vacancy file for %s", telegram_id
+            )
+            await message.reply_text(
+                "Kunne ikke læse teksten fra filen. Prøv at gemme den som almindelig "
+                "PDF, eller send et foto af opslaget i stedet.",
+                reply_markup=build_keyboard(telegram_id),
+            )
+            return
+
+    vacancy = await asyncio.to_thread(extract_vacancy_from_text, text)
+    if vacancy is None:
+        await message.reply_text(
+            "Kunne ikke genkende et jobopslag i den fil. Prøv et link eller et foto i stedet.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+    await _process_manual_vacancy(update, telegram_id, vacancy)
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    if context.user_data.get("awaiting") != "manual_vacancy":
+        # A stray photo outside this flow -- CVs are never uploaded as
+        # photos in this bot, so there's nothing useful to do with it.
+        return
+    context.user_data.pop("awaiting", None)
+
+    message = update.effective_message
+    photo = update.message.photo[-1]  # largest resolution
+    tg_file = await photo.get_file()
+    photo_bytes = bytes(await tg_file.download_as_bytearray())
+
+    vacancy = await asyncio.to_thread(extract_vacancy_from_image, photo_bytes, "image/jpeg")
+    if vacancy is None:
+        await message.reply_text(
+            "Kunne ikke læse et jobopslag på billedet. Prøv et tydeligere foto, "
+            "et link, eller en PDF i stedet.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+    await _process_manual_vacancy(update, telegram_id, vacancy)
 
 
 def _apply_keyboard():
