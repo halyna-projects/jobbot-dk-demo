@@ -518,13 +518,20 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_vacancies = [v for v in vacancies if v.url in unseen_urls or not v.url]
 
     if not new_vacancies:
-        await send_with_retry(
-            update,
-            "Ingen nye job fundet (eller de er allerede vist tidligere). "
-            f"Tryk «{BTN_RESET_SEEN}» for at se dem igen, eller skriv et nyt søgeord "
-            "for at søge igen.",
-            reply_markup=build_keyboard(telegram_id),
-        )
+        if vacancies:
+            await send_with_retry(
+                update,
+                "Ingen nye job fundet — de er allerede vist tidligere. "
+                f"Tryk «{BTN_RESET_SEEN}» for at se dem igen, eller skriv et nyt søgeord "
+                "for at søge igen.",
+                reply_markup=build_keyboard(telegram_id),
+            )
+        else:
+            await send_with_retry(
+                update,
+                "Ingen job fundet for denne søgning. Skriv et nyt søgeord for at søge igen.",
+                reply_markup=build_keyboard(telegram_id),
+            )
         return
 
     scored = await asyncio.to_thread(_score_vacancies, telegram_id, new_vacancies, keywords)
