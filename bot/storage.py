@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
     last_results TEXT DEFAULT NULL,
     last_search_keywords TEXT DEFAULT NULL,
     letters_explained_count INTEGER DEFAULT 0,
-    ai_actions_count INTEGER DEFAULT 0
+    ai_actions_count INTEGER DEFAULT 0,
+    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS seen_vacancies (
@@ -61,6 +62,11 @@ def init_db():
             conn.execute(
                 "ALTER TABLE users ADD COLUMN last_search_keywords TEXT DEFAULT NULL"
             )
+        if "last_active_at" not in columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP "
+                "DEFAULT CURRENT_TIMESTAMP"
+            )
 
 
 def get_user(telegram_id: int):
@@ -75,6 +81,14 @@ def ensure_user(telegram_id: int):
     with get_conn() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO users (telegram_id) VALUES (?)", (telegram_id,)
+        )
+        # Bumped on every write, not just first contact -- this is what
+        # the inactivity cleanup (delete_inactive_users) keys off of, so a
+        # returning person's data doesn't count as "inactive" just because
+        # they first showed up a while ago.
+        conn.execute(
+            "UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
+            (telegram_id,),
         )
 
 
@@ -283,3 +297,24 @@ def filter_unseen(telegram_id: int, urls: list[str]) -> set[str]:
         ).fetchall()
         seen = {r["vacancy_url"] for r in rows}
     return {u for u in urls if u not in seen}
+
+
+def delete_inactive_users(days: int, exclude_ids: set[int]) -> int:
+    """Privacy cleanup for the public demo: removes a person's stored data
+    (CV text, search history, everything) after `days` of inactivity,
+    rather than relying on it being wiped by accident on some future
+    deploy. exclude_ids (the owner's own test accounts) are never
+    touched. Returns how many users were deleted."""
+    placeholders = ",".join("?" for _ in exclude_ids) or "NULL"
+    with get_conn() as conn:
+        cursor = conn.execute(
+            f"DELETE FROM users WHERE last_active_at < datetime('now', ?) "
+            f"AND telegram_id NOT IN ({placeholders})",
+            (f"-{days} days", *exclude_ids),
+        )
+        deleted = cursor.rowcount
+        conn.execute(
+            "DELETE FROM seen_vacancies WHERE telegram_id NOT IN "
+            "(SELECT telegram_id FROM users)"
+        )
+    return deleted

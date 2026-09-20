@@ -38,3 +38,8 @@ EXCLUDED_TELEGRAM_IDS = {7644385945, ADMIN_TELEGRAM_ID}
 # calls, so every search/application counts against a per-person free
 # quota -- except ADMIN_TELEGRAM_ID, which is unlimited.
 FREE_TRIAL_AI_ACTIONS = 2
+
+# Privacy: a public demo visitor's data (CV text, search history, etc.) is
+# deleted after this many days without any activity -- see
+# storage.delete_inactive_users, run daily from bot/main.py.
+INACTIVE_DATA_RETENTION_DAYS = 30

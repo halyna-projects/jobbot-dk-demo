@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from telegram import Update
@@ -11,7 +12,7 @@ from telegram.ext import (
 )
 
 from bot import handlers, storage
-from bot.config import TELEGRAM_BOT_TOKEN
+from bot.config import EXCLUDED_TELEGRAM_IDS, INACTIVE_DATA_RETENTION_DAYS, TELEGRAM_BOT_TOKEN
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -34,6 +35,14 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             logger.exception("Could not even notify the user about the earlier error")
+
+
+async def cleanup_inactive_users(context: ContextTypes.DEFAULT_TYPE):
+    deleted = await asyncio.to_thread(
+        storage.delete_inactive_users, INACTIVE_DATA_RETENTION_DAYS, EXCLUDED_TELEGRAM_IDS
+    )
+    if deleted:
+        logger.info("Privacy cleanup: deleted %s inactive user(s)", deleted)
 
 
 def main():
@@ -64,6 +73,16 @@ def main():
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_plain_text)
     )
     app.add_error_handler(error_handler)
+
+    if app.job_queue is not None:
+        app.job_queue.run_repeating(
+            cleanup_inactive_users, interval=86400, first=60
+        )
+    else:
+        logger.warning(
+            "JobQueue not available (python-telegram-bot[job-queue] not "
+            "installed) -- inactive-user privacy cleanup will not run."
+        )
 
     logging.info("Bot starting (polling)...")
     app.run_polling()
