@@ -76,14 +76,21 @@ def _is_ready_for_search(telegram_id: int) -> bool:
 
 
 def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
-    # Kept to a constant 3 rows -- buttons stacked one per row used to push
-    # the last one ("Tilføj job manuelt") off-screen on smaller phones,
-    # easy to miss without scrolling the keyboard itself.
-    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV, BTN_RESET_SEEN]]
+    # "Søg job igen" (re-search, forgetting what's already been shown) only
+    # makes sense once there's actually something to search with -- showing
+    # it before that point (alongside a "SØG JOB" that isn't even there yet)
+    # just confused people into wondering what the difference was.
     if _is_ready_for_search(telegram_id):
-        rows.append([BTN_SEARCH, BTN_ADD_VACANCY])
+        rows = [
+            [BTN_KEYWORDS, BTN_LOCATION],
+            [BTN_CV, BTN_RESET_SEEN],
+            [BTN_SEARCH, BTN_ADD_VACANCY],
+        ]
     else:
-        rows.append([BTN_ADD_VACANCY])
+        rows = [
+            [BTN_KEYWORDS, BTN_LOCATION],
+            [BTN_CV, BTN_ADD_VACANCY],
+        ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
