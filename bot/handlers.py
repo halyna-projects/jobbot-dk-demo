@@ -81,10 +81,13 @@ def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
     # it before that point (alongside a "SØG JOB" that isn't even there yet)
     # just confused people into wondering what the difference was.
     if _is_ready_for_search(telegram_id):
+        # Both "search" actions together, primary one first -- having
+        # "Søg job igen" appear above "SØG JOB" itself read as if the
+        # secondary action came before the main one.
         rows = [
             [BTN_KEYWORDS, BTN_LOCATION],
-            [BTN_CV, BTN_RESET_SEEN],
-            [BTN_SEARCH, BTN_ADD_VACANCY],
+            [BTN_SEARCH, BTN_RESET_SEEN],
+            [BTN_CV, BTN_ADD_VACANCY],
         ]
     else:
         rows = [
