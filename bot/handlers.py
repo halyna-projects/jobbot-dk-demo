@@ -862,7 +862,11 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                 await message.reply_document(
                     document=f,
                     filename=f"ansogning_{safe_name}.pdf",
-                    caption="Ansøgning som PDF — kan gemmes og printes.",
+                    caption=(
+                        "Ansøgning som PDF — kan gemmes og printes.\n"
+                        "Hvis filen bare åbner til visning: højreklik på filen → "
+                        "«Gem link som...» / «Save link as...»."
+                    ),
                 )
 
             vacancy_pdf_path = Path(tmp_dir) / "vacancy.pdf"
