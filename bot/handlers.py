@@ -864,8 +864,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                     filename=f"ansogning_{safe_name}.pdf",
                     caption=(
                         "Ansøgning som PDF — kan gemmes og printes.\n"
-                        "Hvis filen bare åbner til visning: højreklik på filen → "
-                        "«Gem link som...» / «Save link as...»."
+                        "For at gemme filen: højreklik på den."
                     ),
                 )
 
