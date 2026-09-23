@@ -20,7 +20,7 @@ from bot.agentic_search import agentic_keyword_search
 from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, FREE_TRIAL_AI_ACTIONS, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
-from bot.letter_generation import generate_cover_letter
+from bot.letter_generation import generate_cover_letter, generate_cv_summary
 from bot.manual_vacancy import (
     extract_vacancy_from_image,
     extract_vacancy_from_text,
@@ -850,6 +850,18 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
         update,
         f"{vacancy.title} — {vacancy.company}\n{vacancy.url}\n\n{letter}",
     )
+
+    try:
+        cv_summary = await asyncio.to_thread(generate_cv_summary, cv_text, vacancy)
+        await send_with_retry(
+            update,
+            (
+                "CV-resumé til dette job (kun til dig — indsæt/erstat 'Profil'-afsnittet "
+                f"øverst i dit CV, før du sender ansøgningen):\n\n{cv_summary}"
+            ),
+        )
+    except Exception:
+        logger.exception("CV summary generation failed for %s / %s", telegram_id, vacancy.url)
 
     contact = await asyncio.to_thread(extract_contact_info, vacancy)
 
