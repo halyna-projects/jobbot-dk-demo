@@ -23,8 +23,9 @@ Location: {location}
 Description: {description}
 
 Write the ansøgning in {language}. Requirements:
-- Rely ONLY on real facts from the CV -- never invent skills, tools, or experience that aren't there
-- If the vacancy requires something the CV doesn't have, mention it honestly but briefly as a willingness to learn quickly -- don't hide it
+- Rely ONLY on real facts from the CV -- never invent skills, tools, or experience that aren't there. This includes never naming a specific AI tool/product brand (e.g. Claude Code, ChatGPT, Copilot) as something the candidate personally uses, even as a plausible-sounding example -- describe such work generically as "agentic AI development tools" unless that exact brand name is written in the CV text above
+- Before claiming the candidate lacks experience in a specific technology, check the CV text above for it first -- if it's mentioned anywhere (even briefly, even as an early/introductory project), describe that real experience honestly instead of claiming zero background
+- If the vacancy requires something the CV doesn't have at all, mention it honestly but briefly as a willingness to learn quickly -- don't hide it
 - Emphasize what genuinely overlaps: concrete experience, tools, industry
 - Standard business letter structure: greeting, 3-4 substantive paragraphs, closing
 - Don't use generic content-free phrases ("I'm a team player" etc.) -- only concrete points from the CV
