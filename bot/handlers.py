@@ -20,7 +20,7 @@ from bot.agentic_search import agentic_keyword_search
 from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, FREE_TRIAL_AI_ACTIONS, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
-from bot.letter_generation import generate_cover_letter, verify_application
+from bot.letter_generation import fix_application, generate_cover_letter, verify_application
 from bot.manual_vacancy import (
     extract_vacancy_from_image,
     extract_vacancy_from_text,
@@ -992,6 +992,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         issues = result["issues"]
         uncovered = result["uncovered_areas"]
+        storage.set_last_verify_result(telegram_id, result)
 
         if not issues and not uncovered:
             await update.effective_message.reply_text(
@@ -1015,7 +1016,81 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name = html.escape(area.get("area", ""))
                 why = html.escape(area.get("why", ""))
                 lines.append(f"• {name}\n  {why}")
-        await update.effective_message.reply_text("\n\n".join(lines), parse_mode="HTML")
+        fix_keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔧 Ret baseret på Verify", callback_data="fix_letter")]]
+        )
+        await update.effective_message.reply_text(
+            "\n\n".join(lines), parse_mode="HTML", reply_markup=fix_keyboard
+        )
+        return
+
+    if data == "fix_letter":
+        application = storage.get_last_application(telegram_id)
+        if not application or not application.get("verify"):
+            await update.effective_message.reply_text(
+                "Kør først et Verify-tjek ❓ — der er intet at rette endnu."
+            )
+            return
+        cv_text = storage.get_cv_text(telegram_id)
+        if not cv_text:
+            await update.effective_message.reply_text(
+                f"Kan ikke finde teksten fra dit CV — send filen igen via {BTN_CV}."
+            )
+            return
+        if not await _check_ai_quota(update, telegram_id):
+            return
+        if not await asyncio.to_thread(gemini_is_available):
+            await update.effective_message.reply_text(
+                "⚠️ Gemini er ikke tilgængelig lige nu. Prøv at rette igen om et par minutter."
+            )
+            return
+
+        verify_result = application["verify"]
+        vacancy = application["vacancy"]
+        await update.effective_message.reply_text("🔧 Retter ansøgningen baseret på Verify...")
+        try:
+            fixed_letter = await asyncio.to_thread(
+                fix_application,
+                cv_text,
+                vacancy,
+                application["letter"],
+                verify_result.get("issues") or [],
+                verify_result.get("uncovered_areas") or [],
+            )
+        except Exception:
+            logger.exception("Fix failed for %s", telegram_id)
+            await update.effective_message.reply_text(
+                "Kunne ikke rette ansøgningen (fejl hos modellen). Prøv igen."
+            )
+            return
+
+        storage.set_last_application(telegram_id, vacancy, fixed_letter)
+
+        await update.effective_message.reply_text(
+            f"{vacancy.title} — {vacancy.company}\n\n{fixed_letter}"
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
+            try:
+                letter_pdf_path = Path(tmp_dir) / "letter.pdf"
+                letter_to_pdf(fixed_letter, vacancy, str(letter_pdf_path))
+                with open(letter_pdf_path, "rb") as f:
+                    await update.effective_message.reply_document(
+                        document=f,
+                        filename=f"ansogning_{safe_name}_rettet.pdf",
+                        caption="Rettet ansøgning som PDF.",
+                    )
+            except Exception:
+                logger.exception("Fixed PDF export failed for %s / %s", telegram_id, vacancy.url)
+                await update.effective_message.reply_text(
+                    "Teksten er rettet, men PDF-filen kunne ikke laves."
+                )
+
+        await update.effective_message.reply_text(
+            "Færdig. Det anbefales at køre ❓ Verify igen for at tjekke den rettede version.",
+            reply_markup=_apply_keyboard(),
+        )
         return
 
     if data == "relist":

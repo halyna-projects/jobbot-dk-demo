@@ -191,9 +191,33 @@ def get_last_application(telegram_id: int) -> dict | None:
         return None
     try:
         data = json.loads(raw)
-        return {"vacancy": Vacancy(**data["vacancy"]), "letter": data["letter"]}
+        return {
+            "vacancy": Vacancy(**data["vacancy"]),
+            "letter": data["letter"],
+            "verify": data.get("verify"),
+        }
     except (json.JSONDecodeError, KeyError, TypeError):
         return None
+
+
+def set_last_verify_result(telegram_id: int, result: dict):
+    """Stashes the last Verify result (issues + uncovered_areas) onto the
+    same last_application row, so the "Fix" button can hand it straight to
+    fix_application() without the person re-running Verify."""
+    user = get_user(telegram_id)
+    raw = (user or {}).get("last_application")
+    if not raw:
+        return
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    data["verify"] = result
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET last_application = ? WHERE telegram_id = ?",
+            (json.dumps(data), telegram_id),
+        )
 
 
 def set_last_results(telegram_id: int, scored: list[tuple[Vacancy, int, str]]):
