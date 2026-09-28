@@ -20,7 +20,7 @@ from bot.agentic_search import agentic_keyword_search
 from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, FREE_TRIAL_AI_ACTIONS, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
-from bot.letter_generation import generate_cover_letter
+from bot.letter_generation import generate_cover_letter, verify_application
 from bot.manual_vacancy import (
     extract_vacancy_from_image,
     extract_vacancy_from_text,
@@ -808,7 +808,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def _apply_keyboard():
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📋 Vis listen igen", callback_data="relist")]]
+        [
+            [InlineKeyboardButton("❓ Verify (tjek for opfundne fakta)", callback_data="verify")],
+            [InlineKeyboardButton("📋 Vis listen igen", callback_data="relist")],
+        ]
     )
 
 
@@ -850,6 +853,8 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
         update,
         f"{vacancy.title} — {vacancy.company}\n{vacancy.url}\n\n{letter}",
     )
+
+    storage.set_last_application(telegram_id, vacancy, letter)
 
     contact = await asyncio.to_thread(extract_contact_info, vacancy)
 
@@ -905,6 +910,68 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("apply:"):
         index = int(data.split(":", 1)[1])
         await _apply_to_vacancy_core(update, context, index)
+        return
+
+    if data == "verify":
+        application = storage.get_last_application(telegram_id)
+        if not application:
+            await update.effective_message.reply_text(
+                f"Generér først en ansøgning via {BTN_SEARCH} → jobnummer."
+            )
+            return
+        cv_text = storage.get_cv_text(telegram_id)
+        if not cv_text:
+            await update.effective_message.reply_text(
+                f"Kan ikke finde teksten fra dit CV — send filen igen via {BTN_CV}."
+            )
+            return
+        if not await _check_ai_quota(update, telegram_id):
+            return
+
+        await update.effective_message.reply_text("❓ Sammenligner ansøgningen med originalen...")
+        try:
+            result = await asyncio.to_thread(
+                verify_application, cv_text, application["vacancy"], application["letter"]
+            )
+        except Exception:
+            logger.exception("Verify failed for %s", telegram_id)
+            await update.effective_message.reply_text(
+                "Kunne ikke gennemføre tjekket (fejl hos modellen). Prøv igen."
+            )
+            return
+
+        if result.get("error"):
+            await update.effective_message.reply_text(
+                "Tjekket blev ikke gennemført korrekt — resultatet er ikke pålideligt, prøv igen."
+            )
+            return
+
+        issues = result["issues"]
+        uncovered = result["uncovered_areas"]
+
+        if not issues and not uncovered:
+            await update.effective_message.reply_text(
+                "✅ Tjek bestået: alt i ansøgningen bekræftes af dit originale CV, og alle "
+                "centrale krav i jobopslaget er berørt på en eller anden måde."
+            )
+            return
+
+        lines = []
+        if issues:
+            lines.append("⚠️ Fundet påstande, der ikke bekræftes af det originale CV:\n")
+            for issue in issues:
+                quote = html.escape(issue.get("quote", ""))
+                problem = html.escape(issue.get("problem", ""))
+                lines.append(f"• «{quote}»\n  {problem}")
+        if uncovered:
+            if lines:
+                lines.append("")
+            lines.append("📋 Ikke berørt i ansøgningen (hverken positivt eller som ærligt hul):\n")
+            for area in uncovered:
+                name = html.escape(area.get("area", ""))
+                why = html.escape(area.get("why", ""))
+                lines.append(f"• {name}\n  {why}")
+        await update.effective_message.reply_text("\n\n".join(lines), parse_mode="HTML")
         return
 
     if data == "relist":

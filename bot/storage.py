@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
     last_search_keywords TEXT DEFAULT NULL,
     letters_explained_count INTEGER DEFAULT 0,
     ai_actions_count INTEGER DEFAULT 0,
-    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_application TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS seen_vacancies (
@@ -63,9 +64,20 @@ def init_db():
                 "ALTER TABLE users ADD COLUMN last_search_keywords TEXT DEFAULT NULL"
             )
         if "last_active_at" not in columns:
+            # SQLite refuses a non-constant default (CURRENT_TIMESTAMP) on
+            # ALTER TABLE ADD COLUMN once the table already has rows -- add
+            # it as NULL, then backfill separately (this exact bug crashed
+            # rep_cv's equivalent migration on its live, populated DB).
             conn.execute(
-                "ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP "
-                "DEFAULT CURRENT_TIMESTAMP"
+                "ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP DEFAULT NULL"
+            )
+            conn.execute(
+                "UPDATE users SET last_active_at = CURRENT_TIMESTAMP "
+                "WHERE last_active_at IS NULL"
+            )
+        if "last_application" not in columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN last_application TEXT DEFAULT NULL"
             )
 
 
@@ -157,6 +169,31 @@ def clear_seen(telegram_id: int) -> int:
             "DELETE FROM seen_vacancies WHERE telegram_id = ?", (telegram_id,)
         )
         return cursor.rowcount
+
+
+def set_last_application(telegram_id: int, vacancy: Vacancy, letter: str):
+    """Persists the vacancy + freshly generated letter from the last
+    /apply, so the "Verify" button can cross-check them against the
+    person's real CV without asking them to re-upload anything."""
+    ensure_user(telegram_id)
+    payload = json.dumps({"vacancy": asdict(vacancy), "letter": letter})
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET last_application = ? WHERE telegram_id = ?",
+            (payload, telegram_id),
+        )
+
+
+def get_last_application(telegram_id: int) -> dict | None:
+    user = get_user(telegram_id)
+    raw = (user or {}).get("last_application")
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return {"vacancy": Vacancy(**data["vacancy"]), "letter": data["letter"]}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
 
 
 def set_last_results(telegram_id: int, scored: list[tuple[Vacancy, int, str]]):
