@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="da">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NordPuls chatbot-demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: gym "website" column (pitch + live checklist) beside a docked chat widget; chat first on phones. */
+:root{
+  --bg:#f3f6f7; --surface:#ffffff; --ink:#15262b; --muted:#5b6d72; --line:#dbe3e5;
+  --brand:#0e5a63; --brand-soft:#e2f0f1; --accent:#ee6a36; --accent-ink:#ffffff;
+  --user:#0e5a63; --user-ink:#ffffff; --bot:#eef3f4;
+  --ok:#17894a; --ok-soft:#e6f5ec; --warn:#b3261e; --warn-soft:#fcecea;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Source Sans 3","Segoe UI",Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1719; --surface:#172225; --ink:#e6eef0; --muted:#98abb0; --line:#2a393d;
+  --brand:#5fbfc8; --brand-soft:#1c3337; --accent:#f58454; --accent-ink:#1a0e08;
+  --user:#2b7f88; --user-ink:#ffffff; --bot:#213034;
+  --ok:#5fd08f; --ok-soft:#173327; --warn:#f08a80; --warn-soft:#3a1d1b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1719; --surface:#172225; --ink:#e6eef0; --muted:#98abb0; --line:#2a393d;
+  --brand:#5fbfc8; --brand-soft:#1c3337; --accent:#f58454; --accent-ink:#1a0e08;
+  --user:#2b7f88; --user-ink:#ffffff; --bot:#213034;
+  --ok:#5fd08f; --ok-soft:#173327; --warn:#f08a80; --warn-soft:#3a1d1b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--body);margin:0}
+.demo-bar{background:var(--ink);color:var(--bg);font-size:13px;padding:8px 16px;text-align:center;letter-spacing:.02em}
+.demo-bar b{font-weight:700;letter-spacing:.08em}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:28px 40px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:40px;align-items:start}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr);gap:28px}.chat{order:-1}}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.05}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;border-radius:10px;background:var(--brand);display:grid;place-items:center;flex:none}
+.logo svg{width:26px;height:26px}
+.brand-name{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:.04em;text-transform:uppercase}
+.brand-name span{color:var(--accent)}
+.lede{display:grid;gap:10px;margin-top:22px}
+.lede h1{font-size:clamp(34px,5vw,50px);font-weight:700}
+.lede p{margin:0;color:var(--muted);max-width:60ch}
+section.block{margin-top:30px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.claims{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:520px){.claims{grid-template-columns:minmax(0,1fr)}}
+.claim{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);transition:border-color .3s,background .3s}
+.claim .tick{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;margin-top:1px;transition:all .3s}
+.claim .tick svg{width:12px;height:12px;opacity:0}
+.claim b{display:block;font-size:15px}
+.claim small{color:var(--muted);font-size:13.5px;line-height:1.4;display:block}
+.claim.done{border-color:var(--ok);background:var(--ok-soft)}
+.claim.done .tick{background:var(--ok);border-color:var(--ok)}
+.claim.done .tick svg{opacity:1}
+.progress{font-size:13px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
+.tries{display:flex;flex-wrap:wrap;gap:8px}
+.try{font:inherit;font-size:14.5px;border:1px dashed var(--brand);color:var(--brand);background:transparent;border-radius:999px;padding:6px 12px;cursor:pointer}
+.try:hover{background:var(--brand-soft)}
+.clock{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:14px;border:0;background:transparent;color:var(--ink);padding:7px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.clock-note{font-size:13.5px;color:var(--muted);min-width:0}
+.clock-note.closed{color:var(--warn)}
+.contact{margin-top:34px;padding:18px;border-radius:12px;background:var(--brand-soft);display:grid;gap:8px}
+.contact h3{font-size:24px;font-weight:700}
+.contact p{margin:0;color:var(--muted);font-size:15px}
+.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.mail{font-weight:700;color:var(--brand);font-size:17px;user-select:all;word-break:break-all}
+.copy{font:inherit;font-size:13px;border:1px solid var(--brand);background:var(--surface);color:var(--brand);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* chat widget */
+.chat{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 50px -20px rgba(10,40,45,.35);display:flex;flex-direction:column;height:min(640px,calc(100vh - 48px));min-height:480px;overflow:hidden}
+@media (max-width:860px){.chat{position:relative;top:0;height:560px}}
+.chat-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}
+.avatar{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:17px;flex:none}
+.chat-head .who{min-width:0;flex:1}
+.chat-head b{display:block;font-size:16px}
+.chat-head small{display:flex;align-items:center;gap:6px;font-size:13px;opacity:.9}
+.dot{width:8px;height:8px;border-radius:50%;background:#7ef0a8;flex:none}
+.chat-clock{font-size:12.5px;background:rgba(0,0,0,.18);padding:3px 8px;border-radius:6px;font-variant-numeric:tabular-nums;white-space:nowrap}
+:root[data-theme="dark"] .chat-head{color:#0f1719}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chat-head{color:#0f1719}}
+.log{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.msg{max-width:86%;padding:9px 13px;border-radius:14px;font-size:15px;line-height:1.45;word-wrap:break-word;min-width:0}
+.msg.bot{background:var(--bot);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.user{background:var(--user);color:var(--user-ink);align-self:flex-end;border-bottom-right-radius:4px}
+.msg p{margin:0}
+.msg p+p,.msg p+table,.msg table+p{margin-top:6px}
+.msg table{border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.msg td{padding:1px 12px 1px 0;vertical-align:top}
+.msg td:first-child{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;margin-left:4px;vertical-align:1px}
+.pill.open{background:var(--ok-soft);color:var(--ok)}
+.pill.shut{background:var(--warn-soft);color:var(--warn)}
+.confirm{border-left:3px solid var(--ok);padding-left:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:100%}
+.chip{font:inherit;font-size:14px;border:1px solid var(--brand);background:var(--surface);color:var(--brand);border-radius:999px;padding:5px 12px;cursor:pointer}
+.chip:hover{background:var(--brand-soft)}
+.chips.used .chip{opacity:.45;pointer-events:none}
+.typing{align-self:flex-start;background:var(--bot);border-radius:14px;padding:12px 14px;display:flex;gap:4px}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:b 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+@media (prefers-reduced-motion:reduce){.typing i{animation:none}.log{scroll-behavior:auto}}
+.compose{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.compose input{flex:1;min-width:0;font:inherit;font-size:15.5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:9px 14px}
+.compose button{font:inherit;font-weight:700;border:0;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:0 16px;cursor:pointer}
+.fine{font-size:12px;color:var(--muted);text-align:center;padding:0 10px 8px}
+</style>
+</head>
+<body>
+
+<div class="demo-bar"><b>DEMO</b> · AI-chatbot til fitnesscentre · NordPuls er et fiktivt center, alle tider og priser er eksempler</div>
+
+<div class="wrap">
+  <main>
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><svg viewBox="0 0 26 26" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 14h5l3-7 5 13 3-6h6"/></svg></div>
+      <div class="brand-name">Nord<span>Puls</span> Fitness</div>
+    </div>
+
+    <div class="lede">
+      <h1>Spørg om hvad som helst. Når som helst.</h1>
+      <p>Chatten til højre er en rigtig, kørende chatbot. Stil dine spørgsmål, som et medlem ville gøre, og se hvordan den svarer. Ingen formular, ingen ventetid, ingen "Your conversation has ended".</p>
+    </div>
+
+    <section class="block" aria-labelledby="claims-h">
+      <p class="eyebrow" id="claims-h">Det her kan chatbotten. Afprøv det selv.</p>
+      <ul class="claims" id="claims">
+        <li class="claim" data-claim="tider"><span class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2"><path d="M2 6.5 5 9l5-6"/></svg></span><div><b>Svarer med de faktiske tider</b><small>For det center, man spørger om. Ikke et link til 128 centre.</small></div></li>
+        <li class="claim" data-claim="formular"><span class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2"><path d="M2 6.5 5 9l5-6"/></svg></span><div><b>Skriv bare løs</b><small>Intet krav om navn og e-mail for at stille et spørgsmål.</small></div></li>
+        <li class="claim" data-claim="døgn"><span class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2"><path d="M2 6.5 5 9l5-6"/></svg></span><div><b>Tilgængelig 24/7</b><small>Også søndag kl. 23. Sæt uret nedenfor og prøv.</small></div></li>
+        <li class="claim" data-claim="opfolg"><span class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2"><path d="M2 6.5 5 9l5-6"/></svg></span><div><b>Forstår opfølgende spørgsmål</b><small>"Og har I gratis parkering?" Den husker, hvilket center I taler om.</small></div></li>
+        <li class="claim" data-claim="booking"><span class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2"><path d="M2 6.5 5 9l5-6"/></svg></span><div><b>Tager imod bookinger</b><small>Book et hold direkte i chatten, uden telefonopkald.</small></div></li>
+        <li class="claim" data-claim="lead"><span class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2"><path d="M2 6.5 5 9l5-6"/></svg></span><div><b>Fanger leads</b><small>Tilbyder en gratis prøvetime og gemmer kontaktoplysningerne.</small></div></li>
+      </ul>
+      <p class="progress" id="progress" aria-live="polite">0 af 6 vist</p>
+    </section>
+
+    <section class="block" aria-labelledby="try-h">
+      <p class="eyebrow" id="try-h">Prøv fx at skrive</p>
+      <div class="tries" id="tries">
+        <button class="try" type="button">Hvad er åbningstiderne i Aarhus?</button>
+        <button class="try" type="button">Og har I gratis parkering?</button>
+        <button class="try" type="button">Hvad med Odense?</button>
+        <button class="try" type="button">Hvad koster et medlemskab?</button>
+        <button class="try" type="button">Jeg vil gerne booke spinning</button>
+        <button class="try" type="button">Kan jeg prøve at træne gratis?</button>
+        <button class="try" type="button">Hvordan opsiger jeg?</button>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="clock-h">
+      <p class="eyebrow" id="clock-h">Hvad er klokken?</p>
+      <div class="clock">
+        <div class="seg" role="group" aria-label="Tidspunkt for demoen">
+          <button type="button" id="t-now" aria-pressed="true">Lige nu</button>
+          <button type="button" id="t-sun" aria-pressed="false">Søndag kl. 23:04</button>
+        </div>
+        <span class="clock-note" id="clock-note"></span>
+      </div>
+    </section>
+
+    <div class="contact">
+      <h3>Vil du have sådan en til din virksomhed?</h3>
+      <p>Bygget på dage, ikke uger. Tilpasset dine egne tider, priser, hold og tone. Fungerer også til sund mad, webshops og små virksomheder.</p>
+      <div class="mailrow"><span class="mail" id="mail">hl22111770@gmail.com</span><button class="copy" type="button" id="copy">Kopiér</button></div>
+    </div>
+  </main>
+
+  <aside class="chat" aria-label="NordPuls chat">
+    <div class="chat-head">
+      <div class="avatar" aria-hidden="true">NP</div>
+      <div class="who"><b>NordPuls assistent</b><small><span class="dot"></span>Online · svarer med det samme</small></div>
+      <span class="chat-clock" id="chat-clock"></span>
+    </div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <form class="compose" id="compose" autocomplete="off">
+      <input id="q" type="text" placeholder="Skriv dit spørgsmål her …" aria-label="Skriv en besked" maxlength="300">
+      <button type="submit">Send</button>
+    </form>
+    <div class="fine">Demo-chatbot · svarene er eksempler</div>
+  </aside>
+</div>
+
+<script>
+(function(){
+"use strict";
+// ---------- data ----------
+var DAYS=["mandag","tirsdag","onsdag","torsdag","fredag","lørdag","søndag"];
+var DAYS_SHORT=["Man","Tir","Ons","Tor","Fre","Lør","Søn"];
+function wk(a,b,c,d){return [a,a,a,a,b||a,c||d,d]} // man-tor=a, fre=b, lør=c, søn=d
+var CENTERS={
+  kbh:{name:"København N",area:"Nørrebro",access:wk(["05:00","24:00"],null,["06:00","24:00"],["06:00","24:00"]),
+       staffed:wk(["07:00","21:00"],["07:00","20:00"],["09:00","17:00"],["09:00","17:00"]),
+       parking:"Nej, desværre. Der er ingen egen parkeringsplads i København N, kun betalingsparkering på gaden (zone). Til gengæld er der overdækket cykelparkering lige ved indgangen, og Nørrebro st. ligger 4 minutters gang væk.",
+       free:false},
+  aar:{name:"Aarhus C",area:"Frederiks Allé",access:"24/7",
+       staffed:wk(["08:00","20:00"],null,["10:00","14:00"],["10:00","14:00"]),
+       parking:"Ja! I Aarhus C er der 3 timers gratis parkering i gården bag centret. Husk P-skiven. Der er 24 pladser, og det er sjældent fyldt efter kl. 19.",
+       free:true},
+  ode:{name:"Odense SØ",area:"Niels Bohrs Allé",access:wk(["05:30","23:00"],null,["05:30","23:00"],["05:30","23:00"]),
+       staffed:wk(["07:00","21:00"],null,["09:00","15:00"],["09:00","15:00"]),
+       parking:"Ja, i Odense SØ er parkeringen helt gratis og uden tidsbegrænsning. Der er 60 pladser foran centret, heraf 4 med ladestander.",
+       free:true},
+  aal:{name:"Aalborg Øst",area:"Aalborg Øst",access:"24/7",
+       staffed:wk(["07:00","21:00"],["07:00","19:00"],["09:00","13:00"],["09:00","13:00"]),
+       parking:"Ja, der er gratis parkering lige foran centret i Aalborg Øst. Ingen P-skive nødvendig.",
+       free:true}
+};
+var CENTER_WORDS=[["kbh",/\b(københavn|kobenhavn|kbh|nørrebro|norrebro|cph)\b/],["aar",/\b(aarhus|århus)\b/],["ode",/\bodense\b/],["aal",/\b(aalborg|ålborg)\b/]];
+var CLASSES={
+  spinning:{name:"Spinning",len:45,times:[[0,"17:30"],[2,"17:30"],[3,"06:45"],[5,"10:00"]]},
+  yoga:{name:"Yoga",len:60,times:[[1,"18:00"],[3,"18:00"],[6,"10:00"]]},
+  functional:{name:"Functional styrke",len:50,times:[[0,"07:00"],[2,"07:00"],[4,"16:30"],[5,"11:15"]]},
+  pilates:{name:"Pilates",len:50,times:[[1,"09:30"],[4,"09:30"],[6,"11:30"]]}
+};
+var CLASS_WORDS=[["spinning",/spinning|spin\b|cykel/],["yoga",/yoga/],["functional",/functional|crossfit|styrke|cirkel/],["pilates",/pilates/]];
+
+// ---------- clock ----------
+var simSunday=false;
+function now(){
+  var d=new Date();
+  if(!simSunday) return d;
+  var s=new Date(d); s.setDate(d.getDate()+((7-d.getDay())%7)); s.setHours(23,4,0,0); return s;
+}
+function dayIdx(d){return (d.getDay()+6)%7}
+function hm(d){return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}
+function inRange(t,r){return t>=r[0]&&t<r[1]}
+function supportOpen(d){var i=dayIdx(d);return i<5&&inRange(hm(d),["09:00","16:00"])}
+function renderClock(){
+  var d=now();
+  document.getElementById("chat-clock").textContent=DAYS_SHORT[dayIdx(d)]+" "+hm(d);
+  var note=document.getElementById("clock-note");
+  if(supportOpen(d)){note.textContent="En typisk support-chat (man–fre 09–16) ville også være åben nu.";note.className="clock-note"}
+  else{note.textContent="En typisk support-chat (man–fre 09–16) ville være lukket nu. Denne svarer stadig.";note.className="clock-note closed"}
+}
+
+// ---------- helpers ----------
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function norm(s){return " "+s.toLowerCase().replace(/[?!.,;:()"]/g," ").replace(/\s+/g," ").trim()+" "}
+function findCenter(t){for(var i=0;i<CENTER_WORDS.length;i++)if(CENTER_WORDS[i][1].test(t))return CENTER_WORDS[i][0];return null}
+function findClass(t){for(var i=0;i<CLASS_WORDS.length;i++)if(CLASS_WORDS[i][1].test(t))return CLASS_WORDS[i][0];return null}
+function findDay(t){
+  if(/i morgen/.test(t))return (dayIdx(now())+1)%7;
+  if(/ i dag | lige nu | nu /.test(t))return dayIdx(now());
+  if(/weekend/.test(t))return 5;
+  for(var i=0;i<7;i++)if(t.indexOf(DAYS[i])>=0)return i;
+  return null;
+}
+function exact(r){return r[0]+"–"+r[1]}
+function groupRows(arr){ // arr: 7 ranges -> [[label, range]]
+  var out=[],s=0;
+  for(var i=1;i<=7;i++){
+    if(i===7||arr[i][0]!==arr[s][0]||arr[i][1]!==arr[s][1]){
+      out.push([s===i-1?DAYS_SHORT[s]:DAYS_SHORT[s]+"–"+DAYS_SHORT[i-1].toLowerCase(),exact(arr[s])]);s=i;
+    }
+  }
+  return out;
+}
+function isOpen(c,d){
+  if(c.access==="24/7")return true;
+  return inRange(hm(d),c.access[dayIdx(d)]);
+}
+function table(rows){return "<table>"+rows.map(function(r){return "<tr><td>"+r[0]+"</td><td>"+r[1]+"</td></tr>"}).join("")+"</table>"}
+
+// ---------- state ----------
+var st={center:null,lastIntent:null,flow:null,turns:0,misses:0,lead:null};
+var claimsDone={};
+function claim(k){
+  if(claimsDone[k])return; claimsDone[k]=true;
+  var el=document.querySelector('[data-claim="'+k+'"]'); if(el)el.classList.add("done");
+  document.getElementById("progress").textContent=Object.keys(claimsDone).length+" af 6 vist";
+}
+var centerChips=["København N","Aarhus C","Odense SØ","Aalborg Øst"];
+
+// ---------- answers ----------
+function hoursAnswer(key,day){
+  var c=CENTERS[key],d=now(),today=dayIdx(d);
+  claim("tider");
+  if(day!==null&&day!==undefined){
+    var acc=c.access==="24/7"?"døgnåbent for medlemmer (adgang med app eller kort)":"åbent "+exact(c.access[day]);
+    return "<p><b>"+c.name+"</b>, "+DAYS[day]+": "+acc+". Der er personale "+exact(c.staffed[day])+".</p>";
+  }
+  var open=isOpen(c,d);
+  var status=open?'<span class="pill open">Åbent nu</span>':'<span class="pill shut">Lukket nu</span>';
+  var a="<p><b>"+c.name+"</b> "+status+"</p>";
+  if(c.access==="24/7") a+="<p>Døgnåbent alle dage for medlemmer, med app eller medlemskort.</p><p>Personale i centret:</p>"+table(groupRows(c.staffed));
+  else a+=table(groupRows(c.access))+"<p>Personale: "+groupRows(c.staffed).map(function(r){return r[0]+" "+r[1]}).join(" · ")+".</p>";
+  return a;
+}
+function nextSlots(clsKey,n){
+  var d=now(),out=[],cls=CLASSES[clsKey];
+  for(var add=0;add<8&&out.length<n;add++){
+    var day=new Date(d);day.setDate(d.getDate()+add);
+    var di=dayIdx(day);
+    cls.times.forEach(function(t){
+      if(t[0]!==di)return;
+      if(add===0&&t[1]<=hm(d))return;
+      out.push({date:day,di:di,time:t[1]});
+    });
+  }
+  out.sort(function(a,b){return a.date-b.date||(a.time<b.time?-1:1)});
+  return out.slice(0,n);
+}
+function slotLabel(s){
+  var d=now(),diff=Math.round((new Date(s.date).setHours(0,0,0,0)-new Date(d).setHours(0,0,0,0))/864e5);
+  var when=diff===0?"I dag":diff===1?"I morgen":DAYS[s.di].charAt(0).toUpperCase()+DAYS[s.di].slice(1);
+  return when+" "+s.date.getDate()+"/"+(s.date.getMonth()+1)+" kl. "+s.time;
+}
+function seats(s){var h=(s.di*7+parseInt(s.time,10)*3+s.date.getDate())%9;return h+2}
+
+// ---------- intent detection ----------
+var INTENTS=[
+  ["cancelFlow",/^\s*(annuller|afbryd|glem det|stop)\s*$/],
+  ["book",/\bbook|tilmeld|reserv|melde mig på/],
+  ["trial",/prøve|gratis træning|gratis time|ikke medlem|melde mig ind|indmeld|blive medlem/],
+  ["price",/pris|koste|koster|medlemskab|\bkr\b|billig|student|rabat/],
+  ["cancel",/opsig|udmeld|melde mig ud|binding|stoppe mit/],
+  ["pause",/pause|frys|syg|skadet|gravid|rejse/],
+  ["pt",/personlig træner|\bpt\b|personlig træning/],
+  ["parking",/parker|p-plads|p plads|\bbil\b|ladestander/],
+  ["facilities",/sauna|bad|bruse|omklæd|håndklæd|skab|lås/],
+  ["classes",/\bhold\b|holdplan|holdene|spinning|yoga|pilates|functional|crossfit|styrke/],
+  ["hours",/åben|åbent|åbning|lukke|lukket|hvornår|døgn|nat\b|sent|tidlig|kl\s?\d|\btider\b/],
+  ["human",/medarbejder|menneske|ringe|ring |kontakt|telefon|snakke med/],
+  ["thanks",/\btak\b|super|perfekt|fedt|dejligt/],
+  ["greet",/^\s*(hej|hejsa|hallo|goddag|godaften|godmorgen|hi|hello)\b/]
+];
+function detect(t){for(var i=0;i<INTENTS.length;i++)if(INTENTS[i][1].test(t))return INTENTS[i][0];return null}
+
+// ---------- flows ----------
+function startLead(reason){
+  st.flow={type:"lead"};
+  return {html:"<p>"+reason+"</p><p>Skriv din e-mail eller dit telefonnummer, så kontakter en træner dig inden for 24 timer og finder en tid.</p>",chips:["Nej tak"]};
+}
+function bookStep(){
+  var f=st.flow;
+  if(!f.cls) return {html:"<p>Hvilket hold vil du booke?</p>",chips:Object.keys(CLASSES).map(function(k){return CLASSES[k].name})};
+  if(!f.center) return {html:"<p>"+CLASSES[f.cls].name+", godt valg. Hvilket center?</p>",chips:centerChips};
+  if(!f.slot){
+    f.options=nextSlots(f.cls,3);
+    return {html:"<p>Næste hold med <b>"+CLASSES[f.cls].name+"</b> i "+CENTERS[f.center].name+" ("+CLASSES[f.cls].len+" min):</p>",
+            chips:f.options.map(function(s){return slotLabel(s)+" · "+seats(s)+" pladser"})};
+  }
+  if(!f.name) return {html:"<p>"+slotLabel(f.slot)+", noteret. Hvilket navn skal pladsen bookes i? (Det er det eneste, jeg skal bruge.)</p>"};
+  var done="<div class=\"confirm\"><p><b>Du er booket!</b></p>"+table([["Hold",CLASSES[f.cls].name],["Hvor",CENTERS[f.center].name],["Hvornår",slotLabel(f.slot)],["Navn",esc(f.name)]])+"</div><p>Du får en bekræftelse i NordPuls-appen. Kan du ikke komme, kan du afmelde gratis indtil 2 timer før.</p>";
+  st.center=f.center; st.flow=null; st.lastIntent="classes"; claim("booking");
+  return {html:done,chips:["Har I gratis parkering?","Hvad koster det?"]};
+}
+function handleFlow(raw,t){
+  var f=st.flow;
+  if(f.type==="lead"){
+    if(/^\s*(nej|nej tak|ellers tak)\s*$/.test(t)){st.flow=null;return {html:"<p>Helt i orden. Spørg bare løs, hvis der er andet.</p>",chips:["Hvad koster det?","Åbningstider"]}}
+    var email=raw.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i), phone=raw.replace(/[\s-]/g,"").match(/(\+45)?\d{8}/);
+    if(email||phone){
+      st.flow=null; st.lead=(email||phone)[0]; claim("lead");
+      return {html:"<p><b>Tak!</b> Vi har modtaget <b>"+esc(st.lead)+"</b>. En træner kontakter dig inden for 24 timer"+(st.center?" om en gratis prøvetime i "+CENTERS[st.center].name:" om en gratis prøvetime")+".</p><p>(I demoen gemmes intet. I den rigtige version lander det direkte i jeres indbakke eller CRM.)</p>",chips:["Hvad skal jeg medbringe?","Åbningstider"]};
+    }
+    if(!detect(t)) return {html:"<p>Det ligner ikke en e-mail eller et telefonnummer. Prøv igen, eller skriv \"nej tak\".</p>",chips:["Nej tak"]};
+    st.flow=null; return null; // new question: leave the flow
+  }
+  if(f.type==="book"){
+    var cls=findClass(t),c=findCenter(t);
+    if(cls&&!f.cls){f.cls=cls}
+    if(c){f.center=c}
+    if(f.cls&&f.center&&!f.slot&&f.options){
+      var pick=f.options.filter(function(s){return t.indexOf(norm(slotLabel(s)).trim())>=0})[0];
+      if(pick){f.slot=pick;return bookStep()}
+    }
+    if(f.slot&&!f.name){
+      var intent=detect(t);
+      if(intent&&intent!=="greet"){st.flow=null;return null}
+      f.name=raw.trim().slice(0,40); return bookStep();
+    }
+    if(cls||c) return bookStep();
+    var it=detect(t); if(it&&it!=="book"){st.flow=null;return null}
+    return bookStep();
+  }
+  return null;
+}
+
+// ---------- main reply ----------
+function reply(raw){
+  var t=norm(raw), prevCenter=st.center;
+  st.turns++;
+  if(st.turns===1)claim("formular");
+  if(!supportOpen(now()))claim("døgn");
+  if(st.flow){var fr=handleFlow(raw,t);if(fr)return fr}
+  if(/bare opsig/.test(t))return {html:"<p>Forstået. Gå til <b>Profil → Medlemskab → Opsig</b> i appen, så er det klaret. Du er altid velkommen tilbage.</p>"};
+  var intent=detect(t), c=findCenter(t), day=findDay(t), cls=findClass(t);
+  if(intent==="cancelFlow")return {html:"<p>Okay, det er annulleret. Hvad kan jeg ellers hjælpe med?</p>",chips:["Åbningstider","Priser","Book et hold"]};
+  // follow-ups: "og i Odense?", "hvad med søndag?"
+  var followUp=false;
+  if(!intent&&!c&&day!==null&&st.center){intent="hours";followUp=true}
+  if(!intent&&(c||day!==null)&&st.lastIntent){intent=st.lastIntent;followUp=true}
+  if(!intent&&c){intent="hours"}
+  if(c)st.center=c;
+  if(!c&&st.center&&["hours","parking","facilities"].indexOf(intent)>=0&&prevCenter)followUp=true;
+  if(followUp&&st.turns>1)claim("opfolg");
+  var r=answer(intent,st.center,day,cls,raw);
+  if(intent&&["hours","parking","facilities","classes","price"].indexOf(intent)>=0)st.lastIntent=intent;
+  if(intent)st.misses=0;
+  return r;
+}
+function needCenter(q){return {html:"<p>"+q+" Vi har fire centre. Hvilket tænker du på?</p>",chips:centerChips}}
+function answer(intent,c,day,cls,raw){
+  switch(intent){
+  case "greet":return {html:"<p>Hej! Hvad kan jeg hjælpe med?</p>",chips:["Åbningstider","Hvad koster det?","Book et hold","Gratis prøvetime"]};
+  case "hours":
+    if(!c){st.lastIntent="hours";return needCenter("Det afhænger lidt af centret.")}
+    return {html:hoursAnswer(c,day),chips:["Har I gratis parkering?","Hvad med weekenden?","Book et hold"]};
+  case "parking":
+    if(!c){st.lastIntent="parking";return needCenter("Det kommer an på centret.")}
+    return {html:"<p>"+CENTERS[c].parking+"</p>",chips:["Åbningstider","Har I sauna?","Hvad koster det?"]};
+  case "facilities":
+    return {html:"<p>Alle vores centre har omklædning med bruser, gratis håndklæder og aflåselige skabe (tag din egen hængelås med, eller lån en i receptionen). Sauna findes i "+(c==="kbh"?"alle centre undtagen København N":"Aarhus C, Odense SØ og Aalborg Øst")+".</p>",chips:["Åbningstider","Priser"]};
+  case "price":
+    return {html:"<p>Vores medlemskaber, alle uden binding:</p>"+table([["Basis","229 kr./md. · fri træning, alle centre"],["Plus","329 kr./md. · inkl. alle hold"],["Student","179 kr./md. · som Plus, med gyldigt studiekort"]])+"<p>Ingen oprettelsesgebyr ved indmeldelse online. Opsigelse med løbende måned + 1.</p>",chips:["Gratis prøvetime","Book et hold","Hvordan opsiger jeg?"]};
+  case "trial":
+    return startLead("Du er velkommen til at prøve en gratis træning, med en træner der viser dig rundt.");
+  case "book":case "classes":
+    if(intent==="classes"&&!cls&&!/book/.test(raw.toLowerCase())){
+      return {html:"<p>Holdene er de samme i alle fire centre:</p>"+table(Object.keys(CLASSES).map(function(k){var x=CLASSES[k];return [x.name,x.times.map(function(tt){return DAYS_SHORT[tt[0]]+" "+tt[1]}).join(", ")]}))+"<p>Hold er inkluderet i Plus- og Student-medlemskab.</p>",chips:["Book spinning","Book yoga","Hvad koster det?"]};
+    }
+    st.flow={type:"book",cls:cls,center:c||st.center};
+    return bookStep();
+  case "cancel":
+    return {html:"<p>Du kan opsige i NordPuls-appen under <b>Profil → Medlemskab → Opsig</b>. Der er ingen binding, kun løbende måned + 1. Opsiger du i dag, er sidste betaling for næste måned.</p><p>Er det fordi du har brug for en pause? Du kan også fryse dit medlemskab.</p>",chips:["Fortæl om pause","Nej tak, bare opsig"]};
+  case "pause":
+    return {html:"<p>Du kan sætte dit medlemskab på pause i 1–3 måneder for 49 kr./md. Ved sygdom eller skade med lægeerklæring er pausen gratis. Det klares i appen under <b>Profil → Medlemskab → Pause</b>.</p>",chips:["Åbningstider","Tak!"]};
+  case "pt":
+    return startLead("En personlig træner koster 450 kr. pr. session (45 min.), og nye medlemmer får første session til halv pris.");
+  case "human":
+    return startLead("Selvfølgelig. En medarbejder kan ringe eller skrive til dig.");
+  case "thanks":
+    return {html:"<p>Så lidt! Skriv endelig igen, også midt om natten.</p>"};
+  }
+  if(/medbring/.test(raw.toLowerCase()))return {html:"<p>Bare træningstøj, indendørssko og en vandflaske. Håndklæder får du hos os.</p>"};
+  if(/fortæl om pause/.test(raw.toLowerCase()))return answer("pause",c,day,cls,raw);
+  st.misses++;
+  if(st.misses>=2){st.misses=0;return startLead("Det spørgsmål vil jeg hellere lade en kollega svare på, så du får et præcist svar.")}
+  return {html:"<p>Det er jeg ikke helt sikker på. Jeg kan hjælpe med åbningstider, priser, hold og booking, parkering, pause og opsigelse.</p>",chips:["Åbningstider","Priser","Book et hold","Tal med en medarbejder"]};
+}
+
+// ---------- UI ----------
+var log=document.getElementById("log"),input=document.getElementById("q"),busy=false;
+function addMsg(who,html){var m=document.createElement("div");m.className="msg "+who;m.innerHTML=html;log.appendChild(m);log.scrollTop=log.scrollHeight;return m}
+function addChips(list){
+  if(!list||!list.length)return;
+  var w=document.createElement("div");w.className="chips";
+  list.forEach(function(l){var b=document.createElement("button");b.type="button";b.className="chip";b.textContent=l;b.onclick=function(){w.classList.add("used");send(l.split(" · ")[0])};w.appendChild(b)});
+  log.appendChild(w);log.scrollTop=log.scrollHeight;
+}
+function send(text){
+  text=String(text||"").trim(); if(!text||busy)return;
+  busy=true;
+  document.querySelectorAll(".chips:not(.used)").forEach(function(c){c.classList.add("used")});
+  addMsg("user","<p>"+esc(text)+"</p>");
+  var r=reply(text);
+  var ty=document.createElement("div");ty.className="typing";ty.innerHTML="<i></i><i></i><i></i>";log.appendChild(ty);log.scrollTop=log.scrollHeight;
+  var delay=window.matchMedia("(prefers-reduced-motion: reduce)").matches?150:550+Math.min(r.html.length,600);
+  setTimeout(function(){ty.remove();addMsg("bot",r.html);addChips(r.chips);busy=false},delay);
+}
+document.getElementById("compose").addEventListener("submit",function(e){e.preventDefault();var v=input.value;input.value="";send(v)});
+document.querySelectorAll(".try").forEach(function(b){b.addEventListener("click",function(){send(b.textContent);if(window.innerWidth<=860)document.querySelector(".chat").scrollIntoView({block:"start"})})});
+function setClock(sun){
+  simSunday=sun;
+  document.getElementById("t-now").setAttribute("aria-pressed",String(!sun));
+  document.getElementById("t-sun").setAttribute("aria-pressed",String(sun));
+  renderClock();
+}
+document.getElementById("t-now").onclick=function(){setClock(false)};
+document.getElementById("t-sun").onclick=function(){setClock(true)};
+document.getElementById("copy").addEventListener("click",function(){
+  var btn=this,txt=document.getElementById("mail").textContent;
+  function sel(){var r=document.createRange();r.selectNodeContents(document.getElementById("mail"));var s=getSelection();s.removeAllRanges();s.addRange(r);btn.textContent="Markeret"}
+  try{navigator.clipboard.writeText(txt).then(function(){btn.textContent="Kopieret"},sel)}catch(e){sel()}
+});
+setInterval(renderClock,30000);
+renderClock();
+addMsg("bot","<p>Hej, jeg er NordPuls' assistent. Spørg om åbningstider, priser, hold eller parkering. Du behøver ikke oplyse navn eller e-mail.</p>");
+addChips(["Hvad er åbningstiderne?","Hvad koster det?","Book et hold","Gratis prøvetime"]);
+})();
+</script>
+</body>
+</html>
