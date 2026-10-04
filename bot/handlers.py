@@ -900,6 +900,11 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
 
     storage.set_last_application(telegram_id, vacancy, letter)
 
+    # Contact extraction plus two PDF builds follow before the first file
+    # actually arrives -- without this, a slow response here leaves the
+    # person staring at silence with no sign anything is still happening.
+    await send_with_retry(update, "⏳ Laver PDF-filerne, vent venligst...")
+
     contact = await asyncio.to_thread(extract_contact_info, vacancy)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
