@@ -20,14 +20,19 @@ from bot.agentic_search import agentic_keyword_search
 from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, FREE_TRIAL_AI_ACTIONS, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
-from bot.letter_generation import fix_application, generate_cover_letter, verify_application
+from bot.letter_generation import (
+    fix_application,
+    generate_cover_letter,
+    generate_cv_summary,
+    verify_application,
+)
 from bot.manual_vacancy import (
     extract_vacancy_from_image,
     extract_vacancy_from_text,
     fetch_url_text,
 )
 from bot.matching import compute_match
-from bot.pdf_export import letter_to_pdf, vacancy_to_pdf
+from bot.pdf_export import cv_to_pdf, letter_to_pdf, vacancy_to_pdf
 from bot.search import search_keyword
 from bot.gemini_client import is_available as gemini_is_available
 from bot.semantic_matching import is_configured as semantic_matching_configured
@@ -907,6 +912,15 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
 
     contact = await asyncio.to_thread(extract_contact_info, vacancy)
 
+    cv_summary = None
+    try:
+        cv_summary = await asyncio.to_thread(generate_cv_summary, cv_text, vacancy)
+    except Exception:
+        # A tailored CV is a bonus on top of the ansøgning, not a
+        # requirement -- if the model hiccups here, the person still gets
+        # the letter and job PDF rather than nothing at all.
+        logger.exception("CV summary generation failed for %s / %s", telegram_id, vacancy.url)
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
         try:
@@ -921,6 +935,26 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                         "For at gemme filen: højreklik på den."
                     ),
                 )
+
+            if cv_summary:
+                # Named after the person's own uploaded CV (not just
+                # "cv_...") plus this vacancy, so several tailored versions
+                # in a chat/downloads folder are still recognizable as
+                # "my CV" and distinguishable from each other at a glance.
+                own_cv_path = (storage.get_user(telegram_id) or {}).get("cv_path") or ""
+                own_cv_stem = Path(own_cv_path).stem or "CV"
+                own_cv_stem = re.sub(r"[^\w\-]+", "_", own_cv_stem)[:40]
+                cv_pdf_path = Path(tmp_dir) / "cv.pdf"
+                cv_to_pdf(cv_text, cv_summary, str(cv_pdf_path), vacancy_title=vacancy.title)
+                with open(cv_pdf_path, "rb") as f:
+                    await message.reply_document(
+                        document=f,
+                        filename=f"{own_cv_stem}_{safe_name}.pdf",
+                        caption=(
+                            "Tilpasset CV med en målrettet Profil-tekst til denne "
+                            "stilling — klar til at sende som den er."
+                        ),
+                    )
 
             vacancy_pdf_path = Path(tmp_dir) / "vacancy.pdf"
             vacancy_to_pdf(vacancy, str(vacancy_pdf_path), contact=contact)

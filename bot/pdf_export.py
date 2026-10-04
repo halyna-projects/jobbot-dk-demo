@@ -110,3 +110,88 @@ def letter_to_pdf(letter_text: str, vacancy, output_path: str):
 
     pdf.output(output_path)
     return output_path
+
+
+def _strip_markdown_asterisks(text: str) -> str:
+    """Gemini occasionally decides to bold a heading or phrase with
+    markdown (**like this**) despite nothing asking for it -- fpdf has no
+    markdown support, so it would otherwise print the literal asterisks."""
+    return re.sub(r"\*+", "", text or "")
+
+
+# Common Danish/English CV section headings -- used to recognize where the
+# CV's own "Profil" paragraph ends even when the extracted text (pypdf/docx)
+# has no blank line separating sections at all.
+_SECTION_HEADING_RE = re.compile(
+    r"^(erhvervserfaring|uddannelse|kompetencer|sprog|kurser|certificeringer|"
+    r"referencer|experience|education|skills|languages|courses|references)\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_existing_profil_section(cv_text: str) -> str:
+    """Remove the CV's own "Profil"/"Profile" heading and paragraph, if
+    present, so the freshly generated tailored one (inserted separately,
+    at the top of the PDF) isn't followed by a second, generic profile
+    section further down -- which is confusing and looks like a mistake."""
+    lines = cv_text.split("\n")
+    for i, line in enumerate(lines):
+        if line.strip().lower() in ("profil", "profile"):
+            j = i + 1
+            while j < len(lines):
+                stripped = lines[j].strip()
+                if not stripped or _SECTION_HEADING_RE.match(stripped):
+                    break
+                j += 1
+            if j >= len(lines):
+                # Reached the end of the document without finding a blank
+                # line or a recognized next-section heading -- can't safely
+                # tell where "Profil" ends, so leave the CV untouched
+                # rather than risk deleting real content after it.
+                return cv_text
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            return "\n".join(lines[:i] + lines[j:])
+    return cv_text
+
+
+def cv_to_pdf(cv_text: str, summary: str, output_path: str, vacancy_title: str = "") -> str:
+    """A ready-to-submit CV PDF: the tailored profile up top, followed by
+    the person's own CV content -- so applying doesn't require anyone to
+    open a PDF, copy the summary out by hand, and re-save it as a CV
+    themselves.
+
+    vacancy_title is printed as a clear "applying for" line -- otherwise
+    the only sign of which position this CV is tailored to is the tailored
+    Profil paragraph itself, while the person's own tagline underneath
+    (carried over unchanged from their original CV) stays exactly as
+    generic as it always was.
+    """
+    cv_text = _strip_existing_profil_section(cv_text)
+    summary = _strip_markdown_asterisks(summary)
+    pdf = FPDF()
+    pdf.add_font("DejaVu", "", str(REGULAR_FONT))
+    pdf.add_font("DejaVu", "B", str(BOLD_FONT))
+    pdf.add_page()
+    pdf.set_margins(20, 20, 20)
+
+    if vacancy_title:
+        pdf.set_font("DejaVu", "", 10)
+        pdf.set_text_color(90, 90, 90)
+        pdf.multi_cell(0, 6, f"Ansøgning til stilling: {vacancy_title}")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+    pdf.set_font("DejaVu", "B", 13)
+    pdf.multi_cell(0, 7, "Profil")
+    pdf.ln(2)
+
+    pdf.set_font("DejaVu", "", 11)
+    pdf.multi_cell(0, 6, summary.strip())
+    pdf.ln(8)
+
+    pdf.set_font("DejaVu", "", 10.5)
+    pdf.multi_cell(0, 6, cv_text.strip())
+
+    pdf.output(output_path)
+    return output_path
